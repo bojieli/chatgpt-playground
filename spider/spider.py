@@ -7,11 +7,11 @@ domain = 'ustc.edu.cn'
 
 mysql_db = 'spider_ustc'
 mysql_host = 'localhost'
-mysql_user = 'root'
-mysql_password = ''
+mysql_user = 'spider'
+mysql_password = 'chatgpt-ustc-spider'
 mysql_table = 'webpages'
 
-db_conn = pymysql.connect(mysql_host, mysql_user, mysql_password, mysql_db, cursorclass=pymysql.cursors.DictCursor)
+db_conn = pymysql.connect(host=mysql_host, user=mysql_user, password=mysql_password, database=mysql_db, cursorclass=pymysql.cursors.DictCursor)
 if not db_conn:
     print('database connection failed')
 
@@ -20,7 +20,7 @@ def save_webpage(response):
     with db_conn.cursor() as cursor:
         curr_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         sql = "INSERT INTO " + mysql_table + " (url, data, crawl_time) VALUES (%s, %s, %s)"
-        cursor.execute(sql, (response.url, response.data, curr_time))
+        cursor.execute(sql, (response.url, response.body, curr_time))
         db_conn.commit()
         return {'url': response.url, 'time': curr_time }
     return None

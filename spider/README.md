@@ -2,8 +2,23 @@
 
 You may change the settings in `spider.py`.
 
-## Create the database
+## Create the MySQL (MariaDB) database
+
+Create a database:
+
+```
+create database spider_ustc;
+```
+
+Create a database user and grant the privileges:
+
+```
+create user spider identified by 'chatgpt-ustc-spider';
+grant all privileges on spider_ustc.* to spider;
+```
 
 Create a table in the database with the following:
 
-```create table webpages (url varchar(256) character set ascii primary key, data text, crawl_time datetime);```
+```
+create table webpages (url varchar(256) primary key, data mediumtext, crawl_time datetime);
+```
