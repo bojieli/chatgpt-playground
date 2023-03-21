@@ -36,6 +36,9 @@ def should_crawl(url):
     # check whether the URL is in a subdomain of the target website
     if not re.match('https?://([a-z0-9.-]+\.)?' + domain + '/', url):
         return False
+    # check whether it is an image
+    if url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.png') or url.endswith('.gif'):
+        return False
     # check whether the URL has been crawled
     with db_conn.cursor() as cursor:
         sql = "SELECT crawl_time FROM " + mysql_table + " WHERE url = %s"
@@ -73,7 +76,9 @@ class USTCSpider(scrapy.Spider):
     custom_settings = {
         'DOWNLOADER_MIDDLEWARES': {
             'spider.FilterResponses': 999,
-        }
+        },
+        'DOWNLOAD_MAXSIZE': 16 * 1024 * 1024,
+        'DOWNLOAD_TIMEOUT': 60
     }
 
     def parse(self, response):
