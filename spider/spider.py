@@ -20,8 +20,11 @@ def save_webpage(response):
     with db_conn.cursor() as cursor:
         curr_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         sql = "INSERT INTO " + mysql_table + " (url, data, crawl_time) VALUES (%s, %s, %s)"
-        cursor.execute(sql, (response.url, response.body, curr_time))
-        db_conn.commit()
+        try:
+            cursor.execute(sql, (response.url, response.body, curr_time))
+            db_conn.commit()
+        except Exception as e:
+            print('Failed to save to database ' + str(e))
         return {'url': response.url, 'time': curr_time }
     return None
 
@@ -46,10 +49,17 @@ class USTCSpider(scrapy.Spider):
     def parse(self, response):
         if 'Content-Type' not in response.headers:
             return
-        if not response.headers['Content-Type'].startswith(b'text/'):
+        content_type = response.headers['Content-Type'].lower()
+        if not content_type.startswith(b'text/'):
             return
+        if b'gb2312' in content_type:
+            response.body = response.body.decode('gb2312').encode('utf-8')
+        elif b'gbk' in content_type:
+            response.body = response.body.decode('gbk').encode('utf-8')
+
         yield save_webpage(response)
 
         for next_page in response.css('a::attr(href)'):
-            if should_crawl(next_page.get()):
+            absolute_url = response.urljoin(next_page.get())
+            if should_crawl(absolute_url):
                 yield response.follow(next_page, self.parse)
