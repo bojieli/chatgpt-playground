@@ -58,9 +58,10 @@ class FilterResponses(object):
 
     def process_response(self, request, response, spider):
         type_whitelist = (r'text/', r'application/pdf', r'application/msword', r'officedocument', r'application/vnd.ms-powerpoint', r'openxmlformats')
-        content_type_header = response.headers.get('content-type', None).decode()
+        content_type_header = response.headers.get('content-type', None)
         if not content_type_header:
             return response
+        content_type_header = content_type_header.decode()
         if self.is_valid_response(type_whitelist, content_type_header):
             return response
         else:
@@ -77,8 +78,10 @@ class USTCSpider(scrapy.Spider):
         'DOWNLOADER_MIDDLEWARES': {
             'spider.FilterResponses': 999,
         },
-        'DOWNLOAD_MAXSIZE': 16 * 1024 * 1024,
-        'DOWNLOAD_TIMEOUT': 60
+        'DOWNLOAD_MAXSIZE': 8 * 1024 * 1024,
+        'DOWNLOAD_TIMEOUT': 10,
+        'CONCURRENT_REQUESTS_PER_DOMAIN': 2,
+        'CONCURRENT_REQUESTS': 16
     }
 
     def parse(self, response):
@@ -86,9 +89,9 @@ class USTCSpider(scrapy.Spider):
         if content_type:
             content_type = content_type.decode()
         if 'gb2312' in content_type:
-            response.body = response.body.decode('gb2312')
+            response.body = response.body.decode('gb2312').encode('utf-8')
         elif 'gbk' in content_type:
-            response.body = response.body.decode('gbk')
+            response.body = response.body.decode('gbk').encode('utf-8')
 
         yield save_webpage(response)
 
