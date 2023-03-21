@@ -2,6 +2,8 @@ import scrapy
 import re
 import pymysql
 import datetime    
+from scrapy.exceptions import IgnoreRequest
+import logging
 
 domain = 'ustc.edu.cn'
 
@@ -19,12 +21,13 @@ if not db_conn:
 def save_webpage(response):
     with db_conn.cursor() as cursor:
         curr_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        sql = "INSERT INTO " + mysql_table + " (url, data, crawl_time) VALUES (%s, %s, %s)"
+        sql = "INSERT INTO " + mysql_table + " (url, data, content_type, crawl_time) VALUES (%s, %s, %s, %s)"
         try:
-            cursor.execute(sql, (response.url, response.body, curr_time))
+            content_type_header = response.headers.get('content-type', None)
+            cursor.execute(sql, (response.url, response.body, content_type_header, curr_time))
             db_conn.commit()
         except Exception as e:
-            print('Failed to save to database ' + str(e))
+            print('Failed to save to database: ' + str(e))
         return {'url': response.url, 'time': curr_time }
     return None
 
@@ -42,24 +45,50 @@ def should_crawl(url):
     return True
 
 
+class FilterResponses(object):
+    @staticmethod
+    def is_valid_response(type_whitelist, content_type_header):
+        for type_regex in type_whitelist:
+            if re.search(type_regex, content_type_header):
+                return True
+        return False
+
+    def process_response(self, request, response, spider):
+        type_whitelist = (r'text/', r'application/pdf', r'application/msword', r'officedocument', r'application/vnd.ms-powerpoint', r'openxmlformats')
+        content_type_header = response.headers.get('content-type', None).decode()
+        if not content_type_header:
+            return response
+        if self.is_valid_response(type_whitelist, content_type_header):
+            return response
+        else:
+            msg = "Ignoring request {}, content-type {} was not in whitelist".format(response.url, content_type_header)
+            logging.log(logging.INFO, msg)
+            raise IgnoreRequest()
+
+
 class USTCSpider(scrapy.Spider):
     name = 'ustc-spider'
     start_urls = ['https://' + domain + '/']
 
+    custom_settings = {
+        'DOWNLOADER_MIDDLEWARES': {
+            'spider.FilterResponses': 999,
+        }
+    }
+
     def parse(self, response):
-        if 'Content-Type' not in response.headers:
-            return
-        content_type = response.headers['Content-Type'].lower()
-        if not content_type.startswith(b'text/'):
-            return
-        if b'gb2312' in content_type:
-            response.body = response.body.decode('gb2312').encode('utf-8')
-        elif b'gbk' in content_type:
-            response.body = response.body.decode('gbk').encode('utf-8')
+        content_type = response.headers.get('content-type', None)
+        if content_type:
+            content_type = content_type.decode()
+        if 'gb2312' in content_type:
+            response.body = response.body.decode('gb2312')
+        elif 'gbk' in content_type:
+            response.body = response.body.decode('gbk')
 
         yield save_webpage(response)
 
-        for next_page in response.css('a::attr(href)'):
-            absolute_url = response.urljoin(next_page.get())
-            if should_crawl(absolute_url):
-                yield response.follow(next_page, self.parse)
+        if content_type.startswith('text/'):
+            for next_page in response.css('a::attr(href)'):
+                absolute_url = response.urljoin(next_page.get())
+                if should_crawl(absolute_url):
+                    yield response.follow(next_page, self.parse)
