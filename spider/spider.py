@@ -101,8 +101,11 @@ class USTCSpider(scrapy.Spider):
 
         yield save_webpage(response)
 
+        # page closer to site root is assigned with a higher priority
+        new_priority = response.request.priority - 1
+
         if content_type.startswith('text/'):
             for next_page in response.css('a::attr(href)'):
                 absolute_url = response.urljoin(next_page.get())
                 if should_crawl(absolute_url):
-                    yield response.follow(next_page, self.parse)
+                    yield response.follow(next_page, callback=self.parse, priority=new_priority)
