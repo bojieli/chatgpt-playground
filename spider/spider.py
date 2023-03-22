@@ -36,6 +36,8 @@ def should_crawl(url):
     # check whether the URL is in a subdomain of the target website
     if not re.match('https?://([a-z0-9.-]+\.)?' + domain + '/', url):
         return False
+    if re.match('https?://mirrors.ustc.edu.cn/', url):
+        return False
     # check whether it is an image
     if url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.png') or url.endswith('.gif'):
         return False
@@ -80,8 +82,8 @@ class USTCSpider(scrapy.Spider):
         },
         'DOWNLOAD_MAXSIZE': 8 * 1024 * 1024,
         'DOWNLOAD_TIMEOUT': 10,
-        'CONCURRENT_REQUESTS_PER_DOMAIN': 2,
-        'CONCURRENT_REQUESTS': 16
+        'CONCURRENT_REQUESTS_PER_DOMAIN': 32,
+        'CONCURRENT_REQUESTS': 32
     }
 
     def parse(self, response):
