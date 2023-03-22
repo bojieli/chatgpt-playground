@@ -32,31 +32,6 @@ def save_webpage(response, utf8_body):
     return None
 
 
-def should_crawl(url):
-    # check whether the URL is in a subdomain of the target website
-    if not re.match('https?://([a-z0-9.-]+\.)?' + domain + '/', url):
-        return False
-    if re.match('https?://mirrors.ustc.edu.cn/', url):
-        return False
-    if re.match('https?://git.lug.ustc.edu.cn/', url):
-        return False
-    if re.match('https?://.*.lib.ustc.edu.cn/', url):
-        return False
-    # avoid URLs that are too long
-    if len(url) > 512:
-        return False
-    # check whether it is an image
-    if url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.png') or url.endswith('.gif'):
-        return False
-    # check whether the URL has been crawled
-    with db_conn.cursor() as cursor:
-        sql = "SELECT crawl_time FROM " + mysql_table + " WHERE url = %s"
-        cursor.execute(sql, (url,))
-        if cursor.fetchone():
-            return False
-    return True
-
-
 class FilterResponses(object):
     @staticmethod
     def is_valid_response(type_whitelist, content_type_header):
@@ -80,6 +55,39 @@ class FilterResponses(object):
             raise IgnoreRequest()
 
 
+class FilterRequests(object):
+    @staticmethod
+    def should_crawl(url):
+        # check whether the URL is in a subdomain of the target website
+        if not re.match('https?://([a-z0-9.-]+\.)?' + domain + '/', url):
+            return False
+        if re.match('https?://mirrors.ustc.edu.cn/', url):
+            return False
+        if re.match('https?://git.lug.ustc.edu.cn/', url):
+            return False
+        if re.match('https?://.*.lib.ustc.edu.cn/', url):
+            return False
+        # avoid URLs that are too long
+        if len(url) > 512:
+            return False
+        # check whether it is an image
+        if url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.png') or url.endswith('.gif'):
+            return False
+        # check whether the URL has been crawled
+        with db_conn.cursor() as cursor:
+            sql = "SELECT crawl_time FROM " + mysql_table + " WHERE url = %s"
+            cursor.execute(sql, (url,))
+            if cursor.fetchone():
+                return False
+        return True
+
+    def process_request(self, request, spider):
+        if self.should_crawl(request.url):
+            return None
+        else:
+            raise IgnoreRequest()
+
+
 class USTCSpider(scrapy.Spider):
     name = 'ustc-spider'
     start_urls = ['https://' + domain + '/']
@@ -87,6 +95,7 @@ class USTCSpider(scrapy.Spider):
     custom_settings = {
         'DOWNLOADER_MIDDLEWARES': {
             'spider.FilterResponses': 999,
+            'spider.FilterRequests': 998
         },
         'DOWNLOAD_MAXSIZE': 8 * 1024 * 1024,
         'DOWNLOAD_TIMEOUT': 10,
@@ -112,6 +121,4 @@ class USTCSpider(scrapy.Spider):
 
         if content_type.startswith('text/'):
             for next_page in response.css('a::attr(href)'):
-                absolute_url = response.urljoin(next_page.get())
-                if should_crawl(absolute_url):
-                    yield response.follow(next_page, callback=self.parse)
+                yield response.follow(next_page, callback=self.parse)
