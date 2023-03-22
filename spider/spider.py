@@ -40,6 +40,8 @@ def should_crawl(url):
         return False
     if re.match('https?://git.lug.ustc.edu.cn/', url):
         return False
+    if re.match('https?://opac.lib.ustc.edu.cn/', url):
+        return False
     # check whether it is an image
     if url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.png') or url.endswith('.gif'):
         return False
