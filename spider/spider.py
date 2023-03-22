@@ -66,7 +66,8 @@ class FilterResponses(object):
         return False
 
     def process_response(self, request, response, spider):
-        type_whitelist = (r'text/', r'application/pdf', r'application/msword', r'officedocument', r'application/vnd.ms-powerpoint', r'openxmlformats')
+        #type_whitelist = (r'text/', r'application/pdf', r'application/msword', r'officedocument', r'application/vnd.ms-powerpoint', r'openxmlformats')
+        type_whitelist = (r'text/', )
         content_type_header = response.headers.get('content-type', None)
         if not content_type_header:
             return response
@@ -90,7 +91,10 @@ class USTCSpider(scrapy.Spider):
         'DOWNLOAD_MAXSIZE': 8 * 1024 * 1024,
         'DOWNLOAD_TIMEOUT': 10,
         'CONCURRENT_REQUESTS_PER_DOMAIN': 32,
-        'CONCURRENT_REQUESTS': 32
+        'CONCURRENT_REQUESTS': 32,
+        'DEPTH_PRIORITY': 1,
+        'SCHEDULER_DISK_QUEUE': 'scrapy.squeues.PickleFifoDiskQueue',
+        'SCHEDULER_MEMORY_QUEUE': 'scrapy.squeues.FifoMemoryQueue'
     }
 
     def parse(self, response):
@@ -104,11 +108,8 @@ class USTCSpider(scrapy.Spider):
 
         yield save_webpage(response)
 
-        # page closer to site root is assigned with a higher priority
-        new_priority = response.request.priority - 1
-
         if content_type.startswith('text/'):
             for next_page in response.css('a::attr(href)'):
                 absolute_url = response.urljoin(next_page.get())
                 if should_crawl(absolute_url):
-                    yield response.follow(next_page, callback=self.parse, priority=new_priority)
+                    yield response.follow(next_page, callback=self.parse)
