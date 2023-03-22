@@ -40,7 +40,7 @@ def should_crawl(url):
         return False
     if re.match('https?://git.lug.ustc.edu.cn/', url):
         return False
-    if re.match('https?://opac.lib.ustc.edu.cn/', url):
+    if re.match('https?://.*.lib.ustc.edu.cn/', url):
         return False
     # avoid URLs that are too long
     if len(url) > 512:
