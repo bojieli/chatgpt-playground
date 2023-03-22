@@ -18,13 +18,13 @@ if not db_conn:
     print('database connection failed')
 
 
-def save_webpage(response):
+def save_webpage(response, utf8_body):
     with db_conn.cursor() as cursor:
         curr_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         sql = "INSERT INTO " + mysql_table + " (url, data, content_type, crawl_time) VALUES (%s, %s, %s, %s)"
         try:
             content_type_header = response.headers.get('content-type', None)
-            cursor.execute(sql, (response.url, response.body, content_type_header, curr_time))
+            cursor.execute(sql, (response.url, utf8_body, content_type_header, curr_time))
             db_conn.commit()
         except Exception as e:
             print('Failed to save to database: ' + str(e))
@@ -100,13 +100,15 @@ class USTCSpider(scrapy.Spider):
     def parse(self, response):
         content_type = response.headers.get('content-type', None)
         if content_type:
-            content_type = content_type.decode()
+            content_type = content_type.decode().lower()
         if 'gb2312' in content_type:
-            response.body = response.body.decode('gb2312').encode('utf-8')
+            utf8_body = response.body.decode('gb2312').encode('utf-8')
         elif 'gbk' in content_type:
-            response.body = response.body.decode('gbk').encode('utf-8')
+            utf8_body = response.body.decode('gbk').encode('utf-8')
+        else:
+            utf8_body = response.body
 
-        yield save_webpage(response)
+        yield save_webpage(response, utf8_body)
 
         if content_type.startswith('text/'):
             for next_page in response.css('a::attr(href)'):
