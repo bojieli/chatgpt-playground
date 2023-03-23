@@ -6,7 +6,7 @@ from scrapy.exceptions import IgnoreRequest
 import logging
 
 base_domain = 'ustc.edu.cn'
-max_webpages_per_domain = 10000
+max_webpages_per_domain = 50000
 
 mysql_db = 'spider_ustc'
 mysql_host = 'localhost'
@@ -76,10 +76,13 @@ class FilterResponses(object):
 class FilterRequests(object):
     @staticmethod
     def should_crawl(url):
+        # check if the URL is valid
+        if not url.startswith('http://') and not url.startswith('https://'):
+            return False
         # check whether the URL is in a subdomain of the target website
         url_lowercase = url.lower()
         domain = url_lowercase.split('/')[2]
-        if not re.match('([a-z0-9.-]+\.)?' + base_domain.replace('.', '\.'), url_lowercase):
+        if not re.match('([a-z0-9.-]+\.)?' + base_domain.replace('.', '\.'), domain):
             return False
         # skip URLs in certain domains
         skip_domains = ('mirrors.ustc.edu.cn', 'git.lug.ustc.edu.cn', 'cicpi.ustc.edu.cn')
@@ -96,22 +99,44 @@ class FilterRequests(object):
         for suffix in ('jpg', 'jpeg', 'png', 'gif'):
             if url_lowercase.endswith('.' + suffix):
                 return False
-        with db_conn.cursor() as cursor:
-            # check if we have crawled too many pages in the domain
-            if domain in global_page_count and global_page_count[domain] >= max_webpages_per_domain:
-                return False
+        # check if we have crawled too many pages in the domain
+        if domain in global_page_count and global_page_count[domain] >= max_webpages_per_domain:
+            return False
+        return True
 
-            # check whether the URL has been crawled
+    @staticmethod
+    def has_crawled(url):
+        # check whether the URL has been crawled
+        with db_conn.cursor() as cursor:
             sql = "SELECT crawl_time FROM " + mysql_table + " WHERE url = %s"
             cursor.execute(sql, (url,))
             if cursor.fetchone():
-                return False
-        return True
+                return True
+        return False
+
+    @staticmethod
+    def insert_skipped_url(url):
+        with db_conn.cursor() as cursor:
+            curr_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            try:
+                domain = url.split('/')[2].lower()
+            except:
+                domain = None
+            sql = "INSERT INTO skipped_urls (url, domain, crawl_time) VALUES (%s, %s, %s)"
+            try:
+                cursor.execute(sql, (url, domain, curr_time))
+                db_conn.commit()
+            except:  # failed insertions may be duplicates
+                pass
 
     def process_request(self, request, spider):
         if self.should_crawl(request.url):
-            return None
-        else:
+            if not self.has_crawled(request.url):
+                return None  # begin crawl
+            else:
+                raise IgnoreRequest()  # has been crawled, skip sliently
+        else:  # an URL that should not be crawled
+            self.insert_skipped_url(request.url)
             raise IgnoreRequest()
 
 
