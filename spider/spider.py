@@ -82,7 +82,7 @@ class FilterRequests(object):
         if not re.match('([a-z0-9.-]+\.)?' + base_domain.replace('.', '\.'), url_lowercase):
             return False
         # skip URLs in certain domains
-        skip_domains = ('mirrors.ustc.edu.cn', 'git.lug.ustc.edu.cn')
+        skip_domains = ('mirrors.ustc.edu.cn', 'git.lug.ustc.edu.cn', 'cicpi.ustc.edu.cn')
         if domain in skip_domains:
             return False
         skip_subdomains = ('lib.ustc.edu.cn', )
