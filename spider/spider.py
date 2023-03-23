@@ -5,7 +5,8 @@ import datetime
 from scrapy.exceptions import IgnoreRequest
 import logging
 
-domain = 'ustc.edu.cn'
+base_domain = 'ustc.edu.cn'
+max_webpages_per_domain = 10000
 
 mysql_db = 'spider_ustc'
 mysql_host = 'localhost'
@@ -17,14 +18,31 @@ db_conn = pymysql.connect(host=mysql_host, user=mysql_user, password=mysql_passw
 if not db_conn:
     print('database connection failed')
 
+global_page_count = dict()
+with db_conn.cursor() as cursor:
+    cursor.execute("SELECT * FROM domain_count")
+    domain_counts = cursor.fetchall()
+    for domain_count in domain_counts:
+        global_page_count[domain_count['domain']] = domain_count['page_count']
+
 
 def save_webpage(response, utf8_body):
     with db_conn.cursor() as cursor:
         curr_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        sql = "INSERT INTO " + mysql_table + " (url, data, content_type, crawl_time) VALUES (%s, %s, %s, %s)"
+        sql = "INSERT INTO " + mysql_table + " (url, data, content_type, domain, crawl_time) VALUES (%s, %s, %s, %s, %s)"
         try:
             content_type_header = response.headers.get('content-type', None)
-            cursor.execute(sql, (response.url, utf8_body, content_type_header, curr_time))
+            domain = response.url.split('/')[2].lower()
+            cursor.execute(sql, (response.url, utf8_body, content_type_header, domain, curr_time))
+
+            # update per-domain page count
+            if domain not in global_page_count:
+                global_page_count[domain] = 1
+                sql = "INSERT INTO domain_count (page_count, domain) VALUES (%s, %s)"
+            else:
+                global_page_count[domain] += 1
+                sql = "UPDATE domain_count SET page_count = %s WHERE domain = %s"
+            cursor.execute(sql, (global_page_count[domain], domain))
             db_conn.commit()
         except Exception as e:
             print('Failed to save to database: ' + str(e))
@@ -59,22 +77,31 @@ class FilterRequests(object):
     @staticmethod
     def should_crawl(url):
         # check whether the URL is in a subdomain of the target website
-        if not re.match('https?://([a-z0-9.-]+\.)?' + domain + '/', url):
+        url_lowercase = url.lower()
+        domain = url_lowercase.split('/')[2]
+        if not re.match('([a-z0-9.-]+\.)?' + base_domain.replace('.', '\.'), url_lowercase):
             return False
-        if re.match('https?://mirrors.ustc.edu.cn/', url):
+        # skip URLs in certain domains
+        skip_domains = ('mirrors.ustc.edu.cn', 'git.lug.ustc.edu.cn')
+        if domain in skip_domains:
             return False
-        if re.match('https?://git.lug.ustc.edu.cn/', url):
-            return False
-        if re.match('https?://.*.lib.ustc.edu.cn/', url):
-            return False
+        skip_subdomains = ('lib.ustc.edu.cn', )
+        for match_domain in skip_subdomains:
+            if re.match('.*' + match_domain.replace('.', '\.'), domain):
+                return False
         # avoid URLs that are too long
         if len(url) > 512:
             return False
         # check whether it is an image
-        if url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.png') or url.endswith('.gif'):
-            return False
-        # check whether the URL has been crawled
+        for suffix in ('jpg', 'jpeg', 'png', 'gif'):
+            if url_lowercase.endswith('.' + suffix):
+                return False
         with db_conn.cursor() as cursor:
+            # check if we have crawled too many pages in the domain
+            if domain in global_page_count and global_page_count[domain] >= max_webpages_per_domain:
+                return False
+
+            # check whether the URL has been crawled
             sql = "SELECT crawl_time FROM " + mysql_table + " WHERE url = %s"
             cursor.execute(sql, (url,))
             if cursor.fetchone():
@@ -90,7 +117,7 @@ class FilterRequests(object):
 
 class USTCSpider(scrapy.Spider):
     name = 'ustc-spider'
-    start_urls = ['https://' + domain + '/']
+    start_urls = ['https://' + base_domain + '/']
 
     custom_settings = {
         'DOWNLOADER_MIDDLEWARES': {
